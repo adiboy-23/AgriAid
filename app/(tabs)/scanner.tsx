@@ -8,8 +8,10 @@ import {
   ScrollView,
   Dimensions,
   Platform,
+  Image,
 } from "react-native";
 import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { 
@@ -20,7 +22,9 @@ import {
   AlertTriangle,
   CheckCircle,
   Droplets,
-  Sun
+  Sun,
+  ImageIcon,
+  X
 } from "lucide-react-native";
 import { useAppStore } from "@/store/app-store";
 
@@ -40,6 +44,8 @@ export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<CropAnalysis | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImageOptions, setShowImageOptions] = useState(false);
   const { incrementCropsAnalyzed } = useAppStore();
   const cameraRef = useRef<CameraView>(null);
 
@@ -68,19 +74,49 @@ export default function ScannerScreen() {
     setFacing(current => (current === "back" ? "front" : "back"));
   };
 
-  const analyzeCrop = async () => {
+  const pickImageFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+        setShowImageOptions(false);
+        analyzeCropFromImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to pick image from gallery.");
+    }
+  };
+
+  const takePicture = async () => {
     if (Platform.OS === 'web') {
-      // Web fallback - simulate analysis
       simulateAnalysis();
       return;
     }
 
     try {
       setIsAnalyzing(true);
+      setShowImageOptions(false);
       
-      // Simulate AI analysis with realistic data
       await new Promise(resolve => setTimeout(resolve, 3000));
+      simulateAnalysis();
+    } catch (error) {
+      Alert.alert("Error", "Failed to take picture. Please try again.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const analyzeCropFromImage = async (imageUri: string) => {
+    try {
+      setIsAnalyzing(true);
       
+      await new Promise(resolve => setTimeout(resolve, 3000));
       simulateAnalysis();
     } catch (error) {
       Alert.alert("Error", "Failed to analyze crop. Please try again.");
@@ -133,6 +169,12 @@ export default function ScannerScreen() {
     setAnalysis(randomAnalysis);
     incrementCropsAnalyzed();
     setIsAnalyzing(false);
+  };
+
+  const resetScanner = () => {
+    setAnalysis(null);
+    setSelectedImage(null);
+    setShowImageOptions(false);
   };
 
   const getHealthColor = (score: number) => {
@@ -218,12 +260,39 @@ export default function ScannerScreen() {
 
             <TouchableOpacity
               style={styles.scanAgainButton}
-              onPress={() => setAnalysis(null)}
+              onPress={resetScanner}
             >
               <Text style={styles.scanAgainText}>Scan Another Crop</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (selectedImage && !analysis) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.imagePreviewContainer}>
+          <View style={styles.imageHeader}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setSelectedImage(null)}
+            >
+              <X color="#FFFFFF" size={24} />
+            </TouchableOpacity>
+            <Text style={styles.imageHeaderText}>Selected Image</Text>
+          </View>
+          
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: selectedImage }} style={styles.selectedImage} />
+            {isAnalyzing && (
+              <View style={styles.analyzingOverlay}>
+                <Text style={styles.analyzingText}>Analyzing crop...</Text>
+              </View>
+            )}
+          </View>
+        </View>
       </SafeAreaView>
     );
   }
@@ -250,22 +319,33 @@ export default function ScannerScreen() {
 
             <View style={styles.bottomControls}>
               <Text style={styles.instructionText}>
-                Position crop within the frame
+                Position crop within the frame or select from gallery
               </Text>
               
-              <TouchableOpacity
-                style={[styles.captureButton, isAnalyzing && styles.captureButtonDisabled]}
-                onPress={analyzeCrop}
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing ? (
-                  <View style={styles.analyzingContainer}>
-                    <Text style={styles.analyzingText}>Analyzing...</Text>
-                  </View>
-                ) : (
-                  <Camera color="#FFFFFF" size={32} />
-                )}
-              </TouchableOpacity>
+              <View style={styles.captureContainer}>
+                <TouchableOpacity
+                  style={styles.galleryButton}
+                  onPress={pickImageFromGallery}
+                >
+                  <ImageIcon color="#FFFFFF" size={24} />
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.captureButton, isAnalyzing && styles.captureButtonDisabled]}
+                  onPress={takePicture}
+                  disabled={isAnalyzing}
+                >
+                  {isAnalyzing ? (
+                    <View style={styles.analyzingContainer}>
+                      <Text style={styles.analyzingText}>Analyzing...</Text>
+                    </View>
+                  ) : (
+                    <Camera color="#FFFFFF" size={32} />
+                  )}
+                </TouchableOpacity>
+                
+                <View style={styles.galleryButtonPlaceholder} />
+              </View>
 
               <View style={styles.featuresContainer}>
                 <View style={styles.feature}>
@@ -506,5 +586,69 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  imagePreviewContainer: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  imageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 20,
+    paddingTop: 60,
+  },
+  closeButton: {
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 8,
+    borderRadius: 20,
+    marginRight: 16,
+  },
+  imageHeaderText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  imageContainer: {
+    flex: 1,
+    margin: 20,
+    borderRadius: 20,
+    overflow: "hidden",
+    position: "relative",
+  },
+  selectedImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  analyzingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  captureContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+    gap: 40,
+  },
+  galleryButton: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  galleryButtonPlaceholder: {
+    width: 60,
+    height: 60,
   },
 });

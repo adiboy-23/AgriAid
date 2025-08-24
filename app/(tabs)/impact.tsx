@@ -48,9 +48,8 @@ interface Reward {
 
 export default function ImpactScreen() {
   const [activeTab, setActiveTab] = useState<"tokens" | "blockchain" | "rewards">("tokens");
-  const { metrics } = useAppStore();
+  const { metrics, userTokens, redeemReward, isRewardRedeemed } = useAppStore();
 
-  const userTokens = 1250;
   const userLevel = "Impact Champion";
   const nextLevelTokens = 1500;
 
@@ -179,7 +178,12 @@ export default function ImpactScreen() {
     Alert.alert("Copied!", "Blockchain hash copied to clipboard");
   };
 
-  const redeemReward = (reward: Reward) => {
+  const handleRedeemReward = (reward: Reward) => {
+    if (isRewardRedeemed(reward.id)) {
+      Alert.alert("Already Redeemed", "You have already redeemed this reward.");
+      return;
+    }
+
     if (userTokens < reward.cost) {
       Alert.alert("Insufficient Tokens", "You don't have enough tokens for this reward.");
       return;
@@ -193,7 +197,12 @@ export default function ImpactScreen() {
         {
           text: "Redeem",
           onPress: () => {
-            Alert.alert("Success!", "Reward redeemed successfully! Check your email for details.");
+            const success = redeemReward(reward.id, reward.cost);
+            if (success) {
+              Alert.alert("Success!", "Reward redeemed successfully! Check your email for details.");
+            } else {
+              Alert.alert("Error", "Failed to redeem reward. Please try again.");
+            }
           },
         },
       ]
@@ -361,45 +370,57 @@ export default function ImpactScreen() {
         </Text>
       </View>
 
-      {mockRewards.map((reward) => (
-        <View key={reward.id} style={[styles.rewardCard, !reward.available && styles.rewardCardDisabled]}>
-          <View style={styles.rewardHeader}>
-            <View style={styles.rewardInfo}>
-              <Text style={styles.rewardTitle}>{reward.title}</Text>
-              <Text style={styles.rewardDescription}>{reward.description}</Text>
+      {mockRewards.map((reward) => {
+        const isRedeemed = isRewardRedeemed(reward.id);
+        const canAfford = userTokens >= reward.cost;
+        const isAvailable = reward.available && canAfford && !isRedeemed;
+        
+        return (
+          <View key={reward.id} style={[styles.rewardCard, !isAvailable && styles.rewardCardDisabled]}>
+            <View style={styles.rewardHeader}>
+              <View style={styles.rewardInfo}>
+                <Text style={styles.rewardTitle}>{reward.title}</Text>
+                <Text style={styles.rewardDescription}>{reward.description}</Text>
+                {isRedeemed && (
+                  <View style={styles.redeemedBadge}>
+                    <CheckCircle color="#22C55E" size={16} />
+                    <Text style={styles.redeemedText}>Redeemed</Text>
+                  </View>
+                )}
+              </View>
+              
+              <View style={styles.rewardCost}>
+                <Coins color="#F59E0B" size={20} />
+                <Text style={styles.costText}>{reward.cost}</Text>
+              </View>
             </View>
             
-            <View style={styles.rewardCost}>
-              <Coins color="#F59E0B" size={20} />
-              <Text style={styles.costText}>{reward.cost}</Text>
+            <View style={styles.rewardFooter}>
+              <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(reward.category) }]}>
+                <Text style={styles.categoryText}>
+                  {reward.category.charAt(0).toUpperCase() + reward.category.slice(1)}
+                </Text>
+              </View>
+              
+              <TouchableOpacity
+                style={[
+                  styles.redeemButton,
+                  !isAvailable && styles.redeemButtonDisabled,
+                ]}
+                onPress={() => handleRedeemReward(reward)}
+                disabled={!isAvailable}
+              >
+                <Text style={[
+                  styles.redeemButtonText,
+                  !isAvailable && styles.redeemButtonTextDisabled,
+                ]}>
+                  {isRedeemed ? "Redeemed" : !reward.available ? "Locked" : !canAfford ? "Need More" : "Redeem"}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-          
-          <View style={styles.rewardFooter}>
-            <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(reward.category) }]}>
-              <Text style={styles.categoryText}>
-                {reward.category.charAt(0).toUpperCase() + reward.category.slice(1)}
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              style={[
-                styles.redeemButton,
-                !reward.available && styles.redeemButtonDisabled,
-              ]}
-              onPress={() => redeemReward(reward)}
-              disabled={!reward.available}
-            >
-              <Text style={[
-                styles.redeemButtonText,
-                !reward.available && styles.redeemButtonTextDisabled,
-              ]}>
-                {reward.available ? "Redeem" : "Locked"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ))}
+        );
+      })}
     </ScrollView>
   );
 
@@ -809,5 +830,16 @@ const styles = StyleSheet.create({
   },
   redeemButtonTextDisabled: {
     color: "#9CA3AF",
+  },
+  redeemedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 8,
+  },
+  redeemedText: {
+    fontSize: 12,
+    color: "#22C55E",
+    fontWeight: "600",
   },
 });

@@ -10,10 +10,16 @@ interface AppMetrics {
 
 interface AppStore {
   metrics: AppMetrics;
+  userTokens: number;
+  redeemedRewards: string[];
   incrementMealsSaved: () => void;
   incrementJobsCreated: () => void;
   incrementCropsAnalyzed: () => void;
   incrementIncomeGenerated: (amount: number) => void;
+  addTokens: (amount: number) => void;
+  spendTokens: (amount: number) => boolean;
+  redeemReward: (rewardId: string, cost: number) => boolean;
+  isRewardRedeemed: (rewardId: string) => boolean;
   loadMetrics: () => Promise<void>;
   saveMetrics: () => Promise<void>;
 }
@@ -27,6 +33,8 @@ const initialMetrics: AppMetrics = {
 
 export const useAppStore = create<AppStore>((set, get) => ({
   metrics: initialMetrics,
+  userTokens: 1250,
+  redeemedRewards: [],
 
   incrementMealsSaved: () => {
     set((state) => ({
@@ -54,8 +62,45 @@ export const useAppStore = create<AppStore>((set, get) => ({
         ...state.metrics,
         cropsAnalyzed: state.metrics.cropsAnalyzed + 1,
       },
+      userTokens: state.userTokens + 50,
     }));
     get().saveMetrics();
+  },
+
+  addTokens: (amount: number) => {
+    set((state) => ({
+      userTokens: state.userTokens + amount,
+    }));
+    get().saveMetrics();
+  },
+
+  spendTokens: (amount: number) => {
+    const { userTokens } = get();
+    if (userTokens >= amount) {
+      set((state) => ({
+        userTokens: state.userTokens - amount,
+      }));
+      get().saveMetrics();
+      return true;
+    }
+    return false;
+  },
+
+  redeemReward: (rewardId: string, cost: number) => {
+    const { userTokens, redeemedRewards } = get();
+    if (userTokens >= cost && !redeemedRewards.includes(rewardId)) {
+      set((state) => ({
+        userTokens: state.userTokens - cost,
+        redeemedRewards: [...state.redeemedRewards, rewardId],
+      }));
+      get().saveMetrics();
+      return true;
+    }
+    return false;
+  },
+
+  isRewardRedeemed: (rewardId: string) => {
+    return get().redeemedRewards.includes(rewardId);
   },
 
   incrementIncomeGenerated: (amount: number) => {
@@ -70,22 +115,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   loadMetrics: async () => {
     try {
-      const stored = await AsyncStorage.getItem("app-metrics");
+      const stored = await AsyncStorage.getItem("app-store");
       if (stored) {
-        const metrics = JSON.parse(stored);
-        set({ metrics });
+        const data = JSON.parse(stored);
+        set({ 
+          metrics: data.metrics || initialMetrics,
+          userTokens: data.userTokens || 1250,
+          redeemedRewards: data.redeemedRewards || [],
+        });
       }
     } catch (error) {
-      console.log("Error loading metrics:", error);
+      console.log("Error loading store:", error);
     }
   },
 
   saveMetrics: async () => {
     try {
-      const { metrics } = get();
-      await AsyncStorage.setItem("app-metrics", JSON.stringify(metrics));
+      const { metrics, userTokens, redeemedRewards } = get();
+      await AsyncStorage.setItem("app-store", JSON.stringify({
+        metrics,
+        userTokens,
+        redeemedRewards,
+      }));
     } catch (error) {
-      console.log("Error saving metrics:", error);
+      console.log("Error saving store:", error);
     }
   },
 }));
